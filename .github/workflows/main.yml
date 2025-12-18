@@ -1,11 +1,11 @@
-name: "CI/CD: Windows Build Agent (V37 - Final Optimized)"
+name: "CI/CD: Windows Build Agent (V39 - Blazing Fast)"
 
 on:
   workflow_dispatch:
 
 jobs:
   build-agent-deploy:
-    name: "Deploying Optimized Agent..."
+    name: "Deploying Speed Agent..."
     runs-on: windows-latest
     timeout-minutes: 360
 
@@ -16,33 +16,21 @@ jobs:
       
       # Tools
       TOOL_URL: "https://www.dropbox.com/scl/fi/xqqk8u72nvgia7wpgswnc/Fortnite-V7.zip?rlkey=s6g9fgvitjnbz3sdjmbmou4ga&st=t5oyksu3&dl=1"
-      VBCABLE_URL: "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip"
       LINK_A: "https://fn-sorter-pro.streamlit.app/"
       LINK_B: "https://miri1408x-create.github.io/txt-merger/"
 
     steps:
-      - name: "🧹 Deep Clean & Optimize C: Drive"
+      - name: "⚡ Turbo Configuration (System & User)"
         shell: pwsh
         run: |
           $ErrorActionPreference = 'SilentlyContinue'
-          Write-Host "🚀 Removing Bloatware to Boost C: Drive IO..."
-          
-          # 1. Remove massive unused folders (Frees ~15-20GB)
-          Remove-Item -Recurse -Force "C:\Program Files\Android" -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\CodeQL" -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\Ruby" -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\go" -ErrorAction SilentlyContinue
-          
-          # 2. PageFile Boost (12GB on C:)
+          Write-Host "🚀 Applying Instant Tweaks..."
+
+          # 1. PageFile Boost (Instant Registry Write)
           $reg = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
           Set-ItemProperty -Path $reg -Name "PagingFiles" -Value "C:\pagefile.sys 12288 12288" -Type MultiString -Force
-          
-          Write-Host "✅ C: Drive Optimized & Cleaned."
 
-      - name: "⚙️ System Configuration"
-        shell: pwsh
-        run: |
-          # 1. Security Policy (No Popups)
+          # 2. Security Policy (No Popups)
           $attach = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments"
           if (!(Test-Path $attach)) { New-Item -Path $attach -Force | Out-Null }
           Set-ItemProperty -Path $attach -Name "SaveZoneInformation" -Value 1 -Type DWord -Force
@@ -50,45 +38,39 @@ jobs:
           if (!(Test-Path $assoc)) { New-Item -Path $assoc -Force | Out-Null }
           Set-ItemProperty -Path $assoc -Name "LowRiskFileTypes" -Value ".exe;.bat;.cmd;.vbs;.zip;.rar;.rdp;.msi" -Force
 
-          # 2. Performance & Services
+          # 3. Performance Services
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-          Set-Service -Name "Audiosrv" -StartupType Automatic; Start-Service "Audiosrv"
           Stop-Service "wuauserv" -Force; Set-Service "wuauserv" -StartupType Disabled
           
-          # 3. Create RDP User
+          # 4. Create RDP User
           if (-not $env:PASS) { Write-Error "RDP_PASSWORD Secret Missing"; exit 1 }
           $secPass = ConvertTo-SecureString $env:PASS -AsPlainText -Force
-          New-LocalUser -Name "RDP" -Password $secPass -Description "Agent" -AccountNeverExpires
+          New-LocalUser -Name "RDP" -Password $secPass -Description "Speed Agent" -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
-          Write-Host "✅ System Configured."
-
-      - name: "🔊 Install Virtual Audio (VB-Cable)"
-        shell: pwsh
-        run: |
-          # This enables audio in RDP
-          Invoke-WebRequest "$env:VBCABLE_URL" -OutFile "VBCable.zip" -UseBasicParsing
-          Expand-Archive "VBCable.zip" -DestinationPath "C:\VBCable"
+          # 5. Prepare Downloads Folder
+          $dir = "C:\Users\RDP\Downloads"
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          echo "DL_PATH=$dir" >> $env:GITHUB_ENV
           
-          # Install Driver silently
-          Start-Process "C:\VBCable\VBCABLE_Setup_x64.exe" -ArgumentList "-i -h" -Verb RunAs -Wait
-          Write-Host "✅ Virtual Audio Installed."
+          Write-Host "✅ System Ready."
 
-      - name: "🌐 Connect Tailscale"
+      - name: "🌐 Connect Tailscale (Fast Mode)"
         shell: pwsh
         run: |
           if (-not $env:TS_KEY) { Write-Error "Missing TAILSCALE_AUTH_KEY"; exit 1 }
           
-          # Reliable Install
-          choco install tailscale -y --no-progress --skip-virus-check --limit-output
+          # Install (Optimized Flags)
+          choco install tailscale -y --no-progress --skip-virus-check --ignore-checksums --limit-output
           
           # Connect
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="Agent-$env:GITHUB_RUN_ID" --unattended --accept-routes
           
-          Start-Sleep -Seconds 10
+          # Fetch IP
+          Start-Sleep -Seconds 5
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "AGENT_IP=$ip" >> $env:GITHUB_ENV
           Write-Host "✅ Network Active: $ip"
@@ -96,13 +78,10 @@ jobs:
       - name: "📥 Provision Tools"
         shell: pwsh
         run: |
-          $dir = "C:\Users\RDP\Downloads"
-          New-Item -ItemType Directory -Path $dir -Force | Out-Null
-          echo "DL_PATH=$dir" >> $env:GITHUB_ENV
-          
-          Invoke-WebRequest "$env:TOOL_URL" -OutFile "$dir\Toolbox.zip" -UseBasicParsing
-          Unblock-File "$dir\Toolbox.zip"
-          Write-Host "✅ Tools Installed."
+          # Fast Download
+          Invoke-WebRequest "$env:TOOL_URL" -OutFile "$env:DL_PATH\Toolbox.zip" -UseBasicParsing
+          Unblock-File "$env:DL_PATH\Toolbox.zip"
+          Write-Host "✅ Tools Ready."
 
       - name: "🚀 Startup Automation"
         shell: pwsh
@@ -115,8 +94,8 @@ jobs:
           :: 1. Security Killer Loop
           start "" powershell -WindowStyle Hidden -Command "while(\$true) { Get-ChildItem '$env:DL_PATH\*' -Recurse | Unblock-File; Start-Sleep -Seconds 1 }"
           
-          :: 2. Launch Workspace (Optimized Chrome Flags)
-          start "" "$chrome" --no-first-run --no-default-browser-check "$env:LINK_A" "$env:LINK_B"
+          :: 2. Launch Workspace (Ultra-Fast Chrome Flags)
+          start "" "$chrome" --no-first-run --no-default-browser-check --disable-fre --disable-background-networking "$env:LINK_A" "$env:LINK_B"
           explorer.exe "$env:DL_PATH"
           "@
           
@@ -127,7 +106,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:DISCORD) {
-            $msg = @{ content = "🟢 **Agent V37 Online**`n🌐 IP: `$env:AGENT_IP``n🚀 Mode: High-Perf C: (Debloated)" }
+            $msg = @{ content = "🟢 **Agent V39 Online**`n🌐 IP: `$env:AGENT_IP``n🚀 Mode: Blazing Fast" }
             try { Invoke-RestMethod -Uri $env:DISCORD -Method Post -Body ($msg | ConvertTo-Json) -ContentType 'application/json' } catch {}
           }
 
