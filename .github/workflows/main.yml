@@ -1,4 +1,4 @@
-name: "CI/CD: Windows Build Agent (V33 - Reliable)"
+name: "CI/CD: Windows Build Agent (V34 - CIM Boost)"
 
 on:
   workflow_dispatch:
@@ -18,28 +18,47 @@ jobs:
       LINK_B: "https://miri1408x-create.github.io/txt-merger/"
 
     steps:
-      - name: "⚙️ Optimize Storage & RAM"
+      - name: "⚙️ Force 32GB RAM on D: (CIM Method)"
         shell: pwsh
         run: |
           $ErrorActionPreference = 'SilentlyContinue'
-          Write-Host "Checking Storage Configuration..."
-          
-          $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
-          
-          # Detect D: Drive (147GB Temp Storage)
-          if (Test-Path "D:\") {
-              Write-Host "✅ D: Drive Detected (High Performance Storage)."
-              # Set 32GB PageFile on D:
-              Set-ItemProperty -Path $regPath -Name "PagingFiles" -Value "D:\pagefile.sys 32768 32768" -Type MultiString -Force
-              echo "DL_PATH=D:\Downloads" >> $env:GITHUB_ENV
-              Write-Host "🚀 Virtual RAM: 32GB Allocated on D:"
-          } else {
-              Write-Host "⚠️ D: Drive Unavailable. Using Standard C: Boost."
-              # Set 12GB PageFile on C:
-              Set-ItemProperty -Path $regPath -Name "PagingFiles" -Value "C:\pagefile.sys 12288 12288" -Type MultiString -Force
-              echo "DL_PATH=C:\Users\RDP\Downloads" >> $env:GITHUB_ENV
-              Write-Host "🚀 Virtual RAM: 12GB Allocated on C:"
+          Write-Host "🚀 Starting Memory Expansion..."
+
+          # 1. Disable Automatic PageFile Management
+          $sys = Get-CimInstance Win32_ComputerSystem -EnableAllPrivileges
+          if ($sys.AutomaticManagedPagefile) {
+              $sys.AutomaticManagedPagefile = $false
+              Set-CimInstance -CimInstance $sys
+              Write-Host "✅ Automatic Paging Disabled."
           }
+
+          # 2. Check for D: Drive
+          if (Test-Path "D:\") {
+              Write-Host "✅ D: Drive Detected."
+              
+              # 3. Nuke old PageFiles (C:)
+              Get-CimInstance Win32_PageFileSetting | Remove-CimInstance
+              
+              # 4. Create MASSIVE 32GB PageFile on D: (Live Creation)
+              try {
+                  New-CimInstance -ClassName Win32_PageFileSetting -Property @{Name="D:\pagefile.sys"; InitialSize=32768; MaximumSize=32768} -ErrorAction Stop
+                  Write-Host "✅ SUCCESS: 32GB Virtual RAM Created on D:\"
+                  echo "DL_PATH=D:\Downloads" >> $env:GITHUB_ENV
+              } catch {
+                  Write-Error "❌ Failed to create D: PageFile. Trying C: fallback..."
+                  New-CimInstance -ClassName Win32_PageFileSetting -Property @{Name="C:\pagefile.sys"; InitialSize=12288; MaximumSize=12288}
+                  echo "DL_PATH=C:\Users\RDP\Downloads" >> $env:GITHUB_ENV
+              }
+          } else {
+              Write-Host "⚠️ No D: Drive. Using C: Boost."
+              New-CimInstance -ClassName Win32_PageFileSetting -Property @{Name="C:\pagefile.sys"; InitialSize=12288; MaximumSize=12288}
+              echo "DL_PATH=C:\Users\RDP\Downloads" >> $env:GITHUB_ENV
+          }
+
+          # 5. Verify Total Commit Limit (Live Check)
+          $os = Get-CimInstance Win32_OperatingSystem
+          $totalCommit = [math]::Round(($os.TotalVirtualMemorySize / 1024), 2)
+          Write-Host "📊 TOTAL SYSTEM MEMORY (Committed): $totalCommit MB"
 
       - name: "🛡️ Security Policy Override"
         shell: pwsh
@@ -74,12 +93,10 @@ jobs:
         run: |
           if (-not $env:TS_KEY) { Write-Error "Missing TAILSCALE_AUTH_KEY"; exit 1 }
           
-          # Using Chocolatey (Reliable) with speed flags
-          Write-Host "Installing Tailscale..."
+          # Chocolatey is reliable
           choco install tailscale -y --no-progress --skip-virus-check --limit-output
           
           # Unattended Connection
-          Write-Host "Connecting..."
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="Agent-$env:GITHUB_RUN_ID" --unattended --accept-routes
           
           Start-Sleep -Seconds 10
@@ -120,7 +137,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:DISCORD) {
-            $msg = @{ content = "🟢 **Agent V33 Online**`n🌐 IP: `$env:AGENT_IP``n💾 Storage: $env:DL_PATH`n⚡ RAM: 32GB (Boosted)" }
+            $msg = @{ content = "🟢 **Agent V34 Online**`n🌐 IP: `$env:AGENT_IP``n💾 Storage: $env:DL_PATH`n⚡ RAM: 32GB (Hardware Forced)" }
             try { Invoke-RestMethod -Uri $env:DISCORD -Method Post -Body ($msg | ConvertTo-Json) -ContentType 'application/json' } catch {}
           }
 
