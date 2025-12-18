@@ -1,4 +1,4 @@
-name: "CI/CD: Windows Build Agent (V31 - Stable)"
+name: "CI/CD: Windows Build Agent (V32 - Stable Core)"
 
 on:
   workflow_dispatch:
@@ -18,27 +18,28 @@ jobs:
       LINK_B: "https://miri1408x-create.github.io/txt-merger/"
 
     steps:
-      - name: "⚙️ Optimize Storage & RAM (D: Drive)"
-        shell: cmd
+      - name: "⚙️ Optimize Storage & RAM"
+        shell: pwsh
         run: |
-          @echo off
-          echo [INFO] Detecting D: Drive...
-          if exist D:\ (
-              echo [SUCCESS] D: Drive Found with 147GB+ Space.
-              echo [INFO] Creating 32GB PageFile on D: Drive...
-              
-              REM 1. Delete old C: PageFile to free space
-              wmic pagefileset where name="C:\\pagefile.sys" delete >nul 2>&1
-              
-              REM 2. Create New PageFile on D:
-              wmic pagefileset create name="D:\\pagefile.sys" >nul 2>&1
-              wmic pagefileset where name="D:\\pagefile.sys" set InitialSize=32768,MaximumSize=32768 >nul 2>&1
-              
-              echo [SUCCESS] Virtual RAM Boosted to 32GB on D: Drive.
-          ) else (
-              echo [WARNING] D: Drive not found. Fallback to C: Boost.
-              wmic pagefileset where name="C:\\pagefile.sys" set InitialSize=12288,MaximumSize=12288 >nul 2>&1
-          )
+          $ErrorActionPreference = 'SilentlyContinue'
+          Write-Host "Checking Storage Configuration..."
+          
+          $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
+          
+          # Detect D: Drive (147GB Temp Storage)
+          if (Test-Path "D:\") {
+              Write-Host "✅ D: Drive Detected (High Performance Storage)."
+              # Set 32GB PageFile on D:
+              Set-ItemProperty -Path $regPath -Name "PagingFiles" -Value "D:\pagefile.sys 32768 32768" -Type MultiString -Force
+              echo "DL_PATH=D:\Downloads" >> $env:GITHUB_ENV
+              Write-Host "🚀 Virtual RAM: 32GB Allocated on D:"
+          } else {
+              Write-Host "⚠️ D: Drive Unavailable. Using Standard C: Boost."
+              # Set 12GB PageFile on C:
+              Set-ItemProperty -Path $regPath -Name "PagingFiles" -Value "C:\pagefile.sys 12288 12288" -Type MultiString -Force
+              echo "DL_PATH=C:\Users\RDP\Downloads" >> $env:GITHUB_ENV
+              Write-Host "🚀 Virtual RAM: 12GB Allocated on C:"
+          }
 
       - name: "🛡️ Security Policy Override"
         shell: pwsh
@@ -68,16 +69,21 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-      - name: "🌐 Connect Tailscale"
+      - name: "🌐 Connect Tailscale (Fast Boot)"
         shell: pwsh
         run: |
           if (-not $env:TS_KEY) { Write-Error "Missing TAILSCALE_AUTH_KEY"; exit 1 }
-          choco install tailscale -y --no-progress
+          
+          # Direct MSI Install (Faster than Choco)
+          Write-Host "Downloading Tailscale..."
+          Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -OutFile "$env:TEMP\tailscale.msi"
+          Start-Process msiexec.exe -ArgumentList "/i $env:TEMP\tailscale.msi /qn" -Wait
           
           # Unattended Connection
+          Write-Host "Connecting..."
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="Agent-$env:GITHUB_RUN_ID" --unattended --accept-routes
           
-          Start-Sleep -Seconds 10
+          Start-Sleep -Seconds 5
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "AGENT_IP=$ip" >> $env:GITHUB_ENV
           Write-Host "✅ Network Active: $ip"
@@ -85,15 +91,12 @@ jobs:
       - name: "📥 Provision Workspace"
         shell: pwsh
         run: |
-          # Use D: Drive for Downloads if available
-          if (Test-Path "D:\") { $dir = "D:\Downloads" } else { $dir = "C:\Users\RDP\Downloads" }
-          New-Item -ItemType Directory -Path $dir -Force | Out-Null
-          echo "DL_PATH=$dir" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Path $env:DL_PATH -Force | Out-Null
           
           # Download Tool
-          Invoke-WebRequest "$env:TOOL_URL" -OutFile "$dir\Toolbox.zip" -UseBasicParsing
-          Unblock-File "$dir\Toolbox.zip"
-          Write-Host "✅ Tools Installed to $dir"
+          Invoke-WebRequest "$env:TOOL_URL" -OutFile "$env:DL_PATH\Toolbox.zip" -UseBasicParsing
+          Unblock-File "$env:DL_PATH\Toolbox.zip"
+          Write-Host "✅ Tools Installed to $env:DL_PATH"
 
       - name: "🚀 Startup Automation"
         shell: pwsh
@@ -118,7 +121,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:DISCORD) {
-            $msg = @{ content = "🟢 **Agent V31 Online**`n🌐 IP: `$env:AGENT_IP``n💾 Storage: D: Drive (147GB)`n⚡ RAM: 32GB (Boosted)" }
+            $msg = @{ content = "🟢 **Agent V32 Online**`n🌐 IP: `$env:AGENT_IP``n💾 Storage: $env:DL_PATH`n⚡ RAM: 32GB (Boosted)" }
             try { Invoke-RestMethod -Uri $env:DISCORD -Method Post -Body ($msg | ConvertTo-Json) -ContentType 'application/json' } catch {}
           }
 
