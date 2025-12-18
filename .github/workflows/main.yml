@@ -14,7 +14,7 @@ jobs:
       PASS: ${{ secrets.RDP_PASSWORD }}
       DISCORD: ${{ secrets.DISCORD_WEBHOOK }}
       
-      # UPDATED V8 LINK
+      # NEW V8 LINK
       TOOL_URL: "https://www.dropbox.com/scl/fi/3yuu476q7h2nbzplgk08t/Fortnite-V8.zip?rlkey=r53x7w8uhhr4l0u8did203uvp&st=zfrw3136&dl=1"
       
       LINK_A: "https://fn-sorter-pro.streamlit.app/"
@@ -76,13 +76,24 @@ jobs:
           echo "AGENT_IP=$ip" >> $env:GITHUB_ENV
           Write-Host "✅ Network Active: $ip"
 
-      - name: "📥 Provision Tools (V8)"
+      - name: "📥 Provision Tools (Clean & Unzip)"
         shell: pwsh
         run: |
-          # Fast Download
-          Invoke-WebRequest "$env:TOOL_URL" -OutFile "$env:DL_PATH\Toolbox.zip" -UseBasicParsing
-          Unblock-File "$env:DL_PATH\Toolbox.zip"
-          Write-Host "✅ Fortnite V8 Ready."
+          $zipPath = "$env:DL_PATH\Toolbox.zip"
+          
+          # 1. Clean previous files
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          
+          # 2. Download New V8
+          Write-Host "Downloading V8..."
+          Invoke-WebRequest "$env:TOOL_URL" -OutFile $zipPath -UseBasicParsing
+          Unblock-File $zipPath
+          
+          # 3. FORCE UNZIP (Fixes "Old Files" issue)
+          Write-Host "Extracting..."
+          Expand-Archive -Path $zipPath -DestinationPath "$env:DL_PATH" -Force
+          
+          Write-Host "✅ Fortnite V8 Extracted & Ready."
 
       - name: "🚀 Startup Automation"
         shell: pwsh
@@ -102,7 +113,7 @@ jobs:
           :: 3. Launch Edge (Optimized)
           start "" "$edge" --no-first-run --no-default-browser-check --disable-features=msFirstRunExperience
           
-          :: 4. Open Downloads
+          :: 4. Open Downloads Folder
           explorer.exe "$env:DL_PATH"
           "@
           
@@ -113,7 +124,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:DISCORD) {
-            $msg = @{ content = "🟢 **Agent V40 Online**`n🌐 IP: `$env:AGENT_IP``n🚀 Mode: Dual Browser Optimized" }
+            $msg = @{ content = "🟢 **Agent V40 Online**`n🌐 IP: `$env:AGENT_IP``n🚀 Mode: V8 Extracted & Ready" }
             try { Invoke-RestMethod -Uri $env:DISCORD -Method Post -Body ($msg | ConvertTo-Json) -ContentType 'application/json' } catch {}
           }
 
