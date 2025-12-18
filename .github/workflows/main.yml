@@ -1,8 +1,7 @@
-name: "CI/CD: Windows Build Agent (V30 - D: Drive Boost)"
+name: "CI/CD: Windows Build Agent (V31 - Stable)"
 
 on:
   workflow_dispatch:
-    # Uses Secrets for everything. No typing needed.
 
 jobs:
   build-agent-deploy:
@@ -14,8 +13,6 @@ jobs:
       TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
       PASS: ${{ secrets.RDP_PASSWORD }}
       DISCORD: ${{ secrets.DISCORD_WEBHOOK }}
-      
-      # Tools
       TOOL_URL: "https://www.dropbox.com/scl/fi/xqqk8u72nvgia7wpgswnc/Fortnite-V7.zip?rlkey=s6g9fgvitjnbz3sdjmbmou4ga&st=t5oyksu3&dl=1"
       LINK_A: "https://fn-sorter-pro.streamlit.app/"
       LINK_B: "https://miri1408x-create.github.io/txt-merger/"
@@ -30,14 +27,14 @@ jobs:
               echo [SUCCESS] D: Drive Found with 147GB+ Space.
               echo [INFO] Creating 32GB PageFile on D: Drive...
               
-              :: 1. Delete old C: PageFile (Optional, frees space)
+              REM 1. Delete old C: PageFile to free space
               wmic pagefileset where name="C:\\pagefile.sys" delete >nul 2>&1
               
-              :: 2. Create New PageFile on D:
+              REM 2. Create New PageFile on D:
               wmic pagefileset create name="D:\\pagefile.sys" >nul 2>&1
               wmic pagefileset where name="D:\\pagefile.sys" set InitialSize=32768,MaximumSize=32768 >nul 2>&1
               
-              echo [SUCCESS] Virtual RAM Boosted to 32GB (High Performance).
+              echo [SUCCESS] Virtual RAM Boosted to 32GB on D: Drive.
           ) else (
               echo [WARNING] D: Drive not found. Fallback to C: Boost.
               wmic pagefileset where name="C:\\pagefile.sys" set InitialSize=12288,MaximumSize=12288 >nul 2>&1
@@ -48,7 +45,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'SilentlyContinue'
           
-          # Disable "Mark of the Web" / Security Warnings
+          # Disable Security Warnings
           $attach = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments"
           if (!(Test-Path $attach)) { New-Item -Path $attach -Force | Out-Null }
           Set-ItemProperty -Path $attach -Name "SaveZoneInformation" -Value 1 -Type DWord -Force
@@ -57,12 +54,12 @@ jobs:
           if (!(Test-Path $assoc)) { New-Item -Path $assoc -Force | Out-Null }
           Set-ItemProperty -Path $assoc -Name "LowRiskFileTypes" -Value ".exe;.bat;.cmd;.vbs;.zip;.rar;.rdp;.msi" -Force
 
-          # Performance Tweaks
+          # Performance
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
           Set-Service -Name "Audiosrv" -StartupType Automatic; Start-Service "Audiosrv"
           Stop-Service "wuauserv" -Force; Set-Service "wuauserv" -StartupType Disabled
 
-          # Create User
+          # User & RDP
           if (-not $env:PASS) { Write-Error "RDP_PASSWORD Secret Missing"; exit 1 }
           $secPass = ConvertTo-SecureString $env:PASS -AsPlainText -Force
           New-LocalUser -Name "RDP" -Password $secPass -Description "Build Agent" -AccountNeverExpires
@@ -88,7 +85,7 @@ jobs:
       - name: "📥 Provision Workspace"
         shell: pwsh
         run: |
-          # Use D: Drive for Downloads if available (Faster I/O)
+          # Use D: Drive for Downloads if available
           if (Test-Path "D:\") { $dir = "D:\Downloads" } else { $dir = "C:\Users\RDP\Downloads" }
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
           echo "DL_PATH=$dir" >> $env:GITHUB_ENV
@@ -106,7 +103,7 @@ jobs:
           
           $script = @"
           @echo off
-          :: 1. Security Killer Loop (Scanning $env:DL_PATH)
+          :: 1. Security Killer Loop
           start "" powershell -WindowStyle Hidden -Command "while(\$true) { Get-ChildItem '$env:DL_PATH\*' -Recurse | Unblock-File; Start-Sleep -Seconds 1 }"
           
           :: 2. Launch Workspace
@@ -121,7 +118,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:DISCORD) {
-            $msg = @{ content = "🟢 **Agent V30 Online**`n🌐 IP: `$env:AGENT_IP``n💾 Storage: D: Drive (147GB)`n⚡ RAM: 32GB (Boosted)" }
+            $msg = @{ content = "🟢 **Agent V31 Online**`n🌐 IP: `$env:AGENT_IP``n💾 Storage: D: Drive (147GB)`n⚡ RAM: 32GB (Boosted)" }
             try { Invoke-RestMethod -Uri $env:DISCORD -Method Post -Body ($msg | ConvertTo-Json) -ContentType 'application/json' } catch {}
           }
 
