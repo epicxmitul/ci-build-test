@@ -1,4 +1,4 @@
-name: "CI/CD: Windows Build Agent (V32 - Stable Core)"
+name: "CI/CD: Windows Build Agent (V33 - Reliable)"
 
 on:
   workflow_dispatch:
@@ -69,21 +69,20 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-      - name: "🌐 Connect Tailscale (Fast Boot)"
+      - name: "🌐 Connect Tailscale"
         shell: pwsh
         run: |
           if (-not $env:TS_KEY) { Write-Error "Missing TAILSCALE_AUTH_KEY"; exit 1 }
           
-          # Direct MSI Install (Faster than Choco)
-          Write-Host "Downloading Tailscale..."
-          Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -OutFile "$env:TEMP\tailscale.msi"
-          Start-Process msiexec.exe -ArgumentList "/i $env:TEMP\tailscale.msi /qn" -Wait
+          # Using Chocolatey (Reliable) with speed flags
+          Write-Host "Installing Tailscale..."
+          choco install tailscale -y --no-progress --skip-virus-check --limit-output
           
           # Unattended Connection
           Write-Host "Connecting..."
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="Agent-$env:GITHUB_RUN_ID" --unattended --accept-routes
           
-          Start-Sleep -Seconds 5
+          Start-Sleep -Seconds 10
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "AGENT_IP=$ip" >> $env:GITHUB_ENV
           Write-Host "✅ Network Active: $ip"
@@ -121,7 +120,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:DISCORD) {
-            $msg = @{ content = "🟢 **Agent V32 Online**`n🌐 IP: `$env:AGENT_IP``n💾 Storage: $env:DL_PATH`n⚡ RAM: 32GB (Boosted)" }
+            $msg = @{ content = "🟢 **Agent V33 Online**`n🌐 IP: `$env:AGENT_IP``n💾 Storage: $env:DL_PATH`n⚡ RAM: 32GB (Boosted)" }
             try { Invoke-RestMethod -Uri $env:DISCORD -Method Post -Body ($msg | ConvertTo-Json) -ContentType 'application/json' } catch {}
           }
 
