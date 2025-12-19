@@ -1,4 +1,4 @@
-name: "CI/CD: Windows Build Agent (V43 - Foolproof Staging)"
+name: "CI/CD: Windows Build Agent (V44 - Syntax Fixed)"
 
 on:
   workflow_dispatch:
@@ -13,25 +13,22 @@ jobs:
       TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
       PASS: ${{ secrets.RDP_PASSWORD }}
       DISCORD: ${{ secrets.DISCORD_WEBHOOK }}
-      
-      # V8 DROPBOX LINK
       TOOL_URL: "https://www.dropbox.com/scl/fi/3yuu476q7h2nbzplgk08t/Fortnite-V8.zip?rlkey=r53x7w8uhhr4l0u8did203uvp&st=zfrw3136&dl=1"
-      
       LINK_A: "https://fn-sorter-pro.streamlit.app/"
       LINK_B: "https://miri1408x-create.github.io/txt-merger/"
 
     steps:
-      - name: "⚡ System Configuration (No User Folders)"
+      - name: "⚡ System Configuration"
         shell: pwsh
         run: |
           $ErrorActionPreference = 'SilentlyContinue'
           Write-Host "🚀 Configuring System..."
 
-          # 1. Registry Boost (Instant)
+          # 1. Registry Boost
           $reg = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
           Set-ItemProperty -Path $reg -Name "PagingFiles" -Value "C:\pagefile.sys 12288 12288" -Type MultiString -Force
 
-          # 2. Security Policy (Disable "Open File" Warnings)
+          # 2. Security Policy
           $attach = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments"
           if (!(Test-Path $attach)) { New-Item -Path $attach -Force | Out-Null }
           Set-ItemProperty -Path $attach -Name "SaveZoneInformation" -Value 1 -Type DWord -Force
@@ -39,11 +36,11 @@ jobs:
           if (!(Test-Path $assoc)) { New-Item -Path $assoc -Force | Out-Null }
           Set-ItemProperty -Path $assoc -Name "LowRiskFileTypes" -Value ".exe;.bat;.cmd;.vbs;.zip;.rar;.rdp;.msi" -Force
 
-          # 3. Performance Power Plan
+          # 3. Performance
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
           Stop-Service "wuauserv" -Force; Set-Service "wuauserv" -StartupType Disabled
 
-          # 4. Create User ONLY (We do NOT create C:\Users\RDP manually)
+          # 4. Create User
           if (-not $env:PASS) { Write-Error "RDP_PASSWORD Secret Missing"; exit 1 }
           $secPass = ConvertTo-SecureString $env:PASS -AsPlainText -Force
           New-LocalUser -Name "RDP" -Password $secPass -Description "Agent" -AccountNeverExpires
@@ -52,65 +49,56 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
-          Write-Host "✅ System Ready (Clean Profile State)."
+          Write-Host "✅ System Ready."
 
-      - name: "🌐 Connect Tailscale (Fastest)"
+      - name: "🌐 Connect Tailscale"
         shell: pwsh
         run: |
           if (-not $env:TS_KEY) { Write-Error "Missing TAILSCALE_AUTH_KEY"; exit 1 }
-          # Install using optimized flags for speed
           choco install tailscale -y --no-progress --skip-virus-check --ignore-checksums --limit-output
-          # Connect in Unattended Mode
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="Agent-$env:GITHUB_RUN_ID" --unattended --accept-routes
-          # Get IP
           Start-Sleep -Seconds 5
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "AGENT_IP=$ip" >> $env:GITHUB_ENV
           Write-Host "✅ IP: $ip"
 
-      - name: "📥 Download to Staging Area (C:\Setup)"
+      - name: "📥 Download V8 (Staging)"
         shell: pwsh
         run: |
-          # We download to C:\Setup because it is NEUTRAL.
-          # We do NOT download to C:\Users\RDP because that breaks the profile generation.
           $setupDir = "C:\Setup"
           New-Item -ItemType Directory -Path $setupDir -Force | Out-Null
           
-          Write-Host "Downloading V8 to Staging..."
+          Write-Host "Downloading V8..."
           Invoke-WebRequest "$env:TOOL_URL" -OutFile "$setupDir\Toolbox.zip" -UseBasicParsing
           Unblock-File "$setupDir\Toolbox.zip"
-          
-          Write-Host "✅ V8 Saved to $setupDir (Waiting for Login...)"
+          Write-Host "✅ V8 Staged at $setupDir"
 
-      - name: "🚀 Inject Smart Login Script"
+      - name: "🚀 Inject Login Script"
         shell: pwsh
         run: |
           $bootPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\Boot.bat"
           $chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
           $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
           
-          # This script runs INSIDE your RDP session when you log in.
-          # It sees your REAL folders.
+          # Using Here-String for the Batch file content
           $script = @"
           @echo off
           timeout /t 3 /nobreak >nul
           
-          :: 1. Extract from Global Staging (C:\Setup) to YOUR Local Downloads (%USERPROFILE%)
-          echo Extracting files to your real Downloads folder...
+          REM 1. Extract from Staging to User Downloads
+          echo Extracting files...
           if exist "C:\Setup\Toolbox.zip" (
               powershell -Command "Expand-Archive -Path 'C:\Setup\Toolbox.zip' -DestinationPath '%USERPROFILE%\Downloads' -Force"
           )
           
-          :: 2. Security Killer (Scanning YOUR Downloads)
+          REM 2. Security Killer
           start "" powershell -WindowStyle Hidden -Command "while(\$true) { Get-ChildItem '%USERPROFILE%\Downloads\*' -Recurse | Unblock-File; Start-Sleep -Seconds 1 }"
           
-          :: 3. Launch Chrome (Optimized)
+          REM 3. Launch Browsers
           start "" "$chrome" --no-first-run --no-default-browser-check --disable-fre "$env:LINK_A" "$env:LINK_B"
-          
-          :: 4. Launch Edge (Optimized)
           start "" "$edge" --no-first-run --no-default-browser-check --disable-features=msFirstRunExperience
           
-          :: 5. Open the folder so you can see the files immediately
+          REM 4. Open Folder
           explorer.exe "%USERPROFILE%\Downloads"
           "@
           
@@ -121,12 +109,12 @@ jobs:
         shell: pwsh
         run: |
           if ($env:DISCORD) {
-            $msg = @{ content = "🟢 **Agent V43 Ready**`n🌐 IP: `$env:AGENT_IP``n🧠 Logic: Staged Install (No Profile Bugs)" }
+            $msg = @{ content = "🟢 **Agent V44 Ready**`n🌐 IP: `$env:AGENT_IP``n🚀 Status: Syntax Fixed & Staged" }
             try { Invoke-RestMethod -Uri $env:DISCORD -Method Post -Body ($msg | ConvertTo-Json) -ContentType 'application/json' } catch {}
           }
 
       - name: "🛑 Keep-Alive"
         shell: pwsh
         run: |
-          Write-Host "Agent Active. Waiting for RDP Login..."
+          Write-Host "Agent Active. Waiting for Login..."
           while ($true) { Start-Sleep -Seconds 60 }
