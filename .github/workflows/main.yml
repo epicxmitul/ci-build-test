@@ -1,4 +1,4 @@
-name: "CI/CD: Windows Build Agent (V44 - Syntax Fixed)"
+name: "CI/CD: Windows Build Agent (V45 - Smooth & Instant)"
 
 on:
   workflow_dispatch:
@@ -18,27 +18,35 @@ jobs:
       LINK_B: "https://miri1408x-create.github.io/txt-merger/"
 
     steps:
-      - name: "⚡ System Configuration"
+      - name: "⚡ System Configuration & RDP Tuning"
         shell: pwsh
         run: |
           $ErrorActionPreference = 'SilentlyContinue'
-          Write-Host "🚀 Configuring System..."
+          Write-Host "🚀 Tuning RDP for Low Latency..."
 
-          # 1. Registry Boost
-          $reg = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
-          Set-ItemProperty -Path $reg -Name "PagingFiles" -Value "C:\pagefile.sys 12288 12288" -Type MultiString -Force
+          # 1. RDP Protocol Tuning (The "Smoothness" Fix)
+          # Disable Wallpaper, Themes, and Shadows to save bandwidth
+          $regBase = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"
+          if (!(Test-Path $regBase)) { New-Item -Path $regBase -Force | Out-Null }
+          Set-ItemProperty -Path $regBase -Name "fDisableWallpaper" -Value 1 -Type DWord -Force
+          Set-ItemProperty -Path $regBase -Name "fDisableThemes" -Value 1 -Type DWord -Force
+          Set-ItemProperty -Path $regBase -Name "fDisableCursorShadow" -Value 1 -Type DWord -Force
+          Set-ItemProperty -Path $regBase -Name "fDisableFullWindowDrag" -Value 1 -Type DWord -Force
+          Set-ItemProperty -Path $regBase -Name "fDisableMenuAnims" -Value 1 -Type DWord -Force
 
-          # 2. Security Policy
+          # 2. Performance Registry
+          $memReg = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
+          Set-ItemProperty -Path $memReg -Name "PagingFiles" -Value "C:\pagefile.sys 12288 12288" -Type MultiString -Force
+          powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+          Stop-Service "wuauserv" -Force; Set-Service "wuauserv" -StartupType Disabled
+
+          # 3. Security Policy
           $attach = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments"
           if (!(Test-Path $attach)) { New-Item -Path $attach -Force | Out-Null }
           Set-ItemProperty -Path $attach -Name "SaveZoneInformation" -Value 1 -Type DWord -Force
           $assoc = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Associations"
           if (!(Test-Path $assoc)) { New-Item -Path $assoc -Force | Out-Null }
           Set-ItemProperty -Path $assoc -Name "LowRiskFileTypes" -Value ".exe;.bat;.cmd;.vbs;.zip;.rar;.rdp;.msi" -Force
-
-          # 3. Performance
-          powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-          Stop-Service "wuauserv" -Force; Set-Service "wuauserv" -StartupType Disabled
 
           # 4. Create User
           if (-not $env:PASS) { Write-Error "RDP_PASSWORD Secret Missing"; exit 1 }
@@ -49,9 +57,9 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
-          Write-Host "✅ System Ready."
+          Write-Host "✅ System Tuned & Ready."
 
-      - name: "🌐 Connect Tailscale"
+      - name: "🌐 Connect Tailscale (Auto-Print IP)"
         shell: pwsh
         run: |
           if (-not $env:TS_KEY) { Write-Error "Missing TAILSCALE_AUTH_KEY"; exit 1 }
@@ -59,6 +67,13 @@ jobs:
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="Agent-$env:GITHUB_RUN_ID" --unattended --accept-routes
           Start-Sleep -Seconds 5
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          
+          # PRINT IP TO GITHUB SUMMARY (The "Easy Find" Fix)
+          echo "## 🟢 RDP ONLINE" >> $env:GITHUB_STEP_SUMMARY
+          echo "**IP Address:** \`$ip\`" >> $env:GITHUB_STEP_SUMMARY
+          echo "**User:** \`RDP\`" >> $env:GITHUB_STEP_SUMMARY
+          echo "**Password:** *(Hidden in Secrets)*" >> $env:GITHUB_STEP_SUMMARY
+          
           echo "AGENT_IP=$ip" >> $env:GITHUB_ENV
           Write-Host "✅ IP: $ip"
 
@@ -73,43 +88,42 @@ jobs:
           Unblock-File "$setupDir\Toolbox.zip"
           Write-Host "✅ V8 Staged at $setupDir"
 
-      - name: "🚀 Inject Login Script"
+      - name: "🚀 Inject Instant Login Script"
         shell: pwsh
         run: |
           $bootPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\Boot.bat"
           $chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
           $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
           
-          # Using Here-String for the Batch file content
+          # Using Here-String for Batch content
+          # Removed "timeout" command to fix the slow start
           $script = @"
           @echo off
-          timeout /t 3 /nobreak >nul
           
-          REM 1. Extract from Staging to User Downloads
-          echo Extracting files...
+          REM 1. Launch Browsers FIRST (Instant Pop-up)
+          start "" "$chrome" --no-first-run --no-default-browser-check --disable-fre "$env:LINK_A" "$env:LINK_B"
+          start "" "$edge" --no-first-run --no-default-browser-check --disable-features=msFirstRunExperience
+          
+          REM 2. Extract Files (Background)
           if exist "C:\Setup\Toolbox.zip" (
               powershell -Command "Expand-Archive -Path 'C:\Setup\Toolbox.zip' -DestinationPath '%USERPROFILE%\Downloads' -Force"
           )
           
-          REM 2. Security Killer
+          REM 3. Security Killer (Background)
           start "" powershell -WindowStyle Hidden -Command "while(\$true) { Get-ChildItem '%USERPROFILE%\Downloads\*' -Recurse | Unblock-File; Start-Sleep -Seconds 1 }"
           
-          REM 3. Launch Browsers
-          start "" "$chrome" --no-first-run --no-default-browser-check --disable-fre "$env:LINK_A" "$env:LINK_B"
-          start "" "$edge" --no-first-run --no-default-browser-check --disable-features=msFirstRunExperience
-          
-          REM 4. Open Folder
+          REM 4. Open Folder (Last)
           explorer.exe "%USERPROFILE%\Downloads"
           "@
           
           Set-Content -Path $bootPath -Value $script
-          Write-Host "✅ Login Script Configured."
+          Write-Host "✅ Instant-Boot Script Configured."
 
       - name: "🔔 Status Notification"
         shell: pwsh
         run: |
           if ($env:DISCORD) {
-            $msg = @{ content = "🟢 **Agent V44 Ready**`n🌐 IP: `$env:AGENT_IP``n🚀 Status: Syntax Fixed & Staged" }
+            $msg = @{ content = "🟢 **Agent V45 Ready**`n🌐 IP: `$env:AGENT_IP``n🚀 Performance: Tuned for Smoothness" }
             try { Invoke-RestMethod -Uri $env:DISCORD -Method Post -Body ($msg | ConvertTo-Json) -ContentType 'application/json' } catch {}
           }
 
